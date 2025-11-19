@@ -2,8 +2,10 @@
 import pandas as pd
 import numpy as np
 from sklearn.cluster import DBSCAN
+import hdbscan
+import warnings
 
-def cluster_locations_per_month(df, eps_meters=50, min_samples=5, n_jobs=-1):
+def cluster_locations_per_month(df, eps_meters=50, min_samples=5, n_jobs=1):
     """
     Cluster all locations grouped by month in parallel using DBSCAN with Haversine metric.
 
@@ -13,11 +15,13 @@ def cluster_locations_per_month(df, eps_meters=50, min_samples=5, n_jobs=-1):
     - min_samples: minimum points for a cluster
     - n_jobs: parallel jobs for DBSCAN
     """
+    warnings.filterwarnings("ignore", message=".*force_all_finite.*")
     df = df.copy()
     df['datetime'] = pd.to_datetime(df['datetime'])
     df['month'] = df['datetime'].dt.to_period('M')
 
     result_dfs = []
+    count = 0
 
     for month, group in df.groupby('month'):
         if group.empty:
@@ -26,15 +30,18 @@ def cluster_locations_per_month(df, eps_meters=50, min_samples=5, n_jobs=-1):
         # Convert coordinates to radians for Haversine metric
         coords = np.radians(group[['latitude', 'longitude']].to_numpy())
 
-        # DBSCAN clustering
-        db = DBSCAN(
-            eps=eps_meters / 6371000,  # Convert meters to radians
+        # HDBSCAN clustering
+        db = hdbscan.HDBSCAN(
+            min_cluster_size=min_samples,
             min_samples=min_samples,
-            metric='haversine',
-            n_jobs=n_jobs
+            metric="haversine",
+            cluster_selection_epsilon=eps_meters/6371000
         )
         labels = db.fit_predict(coords)
 
+        count += 1
+
+        print(f"finished {count}")
         group = group.copy()
         group['cluster'] = labels
         result_dfs.append(group)

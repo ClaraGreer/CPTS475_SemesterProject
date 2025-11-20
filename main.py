@@ -84,4 +84,4 @@ def main(run_clustering: bool = True):
 if __name__ == "__main__":
     # first run: set to True to compute + save clusters
     # later runs (for mapping/analysis only): change to False
-    main(run_clustering=True)
+    main(run_clustering=False)

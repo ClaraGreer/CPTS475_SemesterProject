@@ -54,8 +54,9 @@ def compute_time_spent(df):
     Compute time spent per cluster in hours.
     Assumes 'datetime' is sorted.
     """
-    df = df.sort_values('datetime')
+
     df['time_diff'] = df['datetime'].diff().dt.total_seconds().fillna(0) / 3600  # hours
     time_per_cluster = df.groupby('cluster')['time_diff'].sum().reset_index()
     time_per_cluster.rename(columns={'time_diff': 'hours'}, inplace=True)
+    time_per_cluster = time_per_cluster.sort_values(by = ['hours'], ascending=False)
     return time_per_cluster

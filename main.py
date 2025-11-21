@@ -53,21 +53,21 @@ def main(run_clustering: bool = True):
             print(f"{name}: loaded {df.shape[0]} rows from {path}")
 
     print("\n=== Top 5 Locations Per Month ===\n")
+    top5_clusters = {}
+
     for name, df in clustered.items():
         print(f"\n{name}:")
         top5 = top_locations_monthly(df, n=5)
+        top5_clusters[name] = {}
         for month, dwell_df in top5.items():
             print(f"  Month: {month}")
             print(dwell_df[["cluster", "hours"]].to_string(index=False))
 
+            #Store clusters present for mapping
+            top5_clusters[name][month] = dwell_df["cluster"].tolist()
+
     print("\n=== Weekday vs Weekend Time Spent ===\n")
-    for name, df in clustered.items():
-        week, weekend = weekday_weekend_stats(df)
-        print(f"\n{name}:")
-        print("  Weekdays clusters (hours):")
-        print(week[["cluster", "hours"]].to_string(index=False))
-        print("  Weekends clusters (hours):")
-        print(weekend[["cluster", "hours"]].to_string(index=False))
+    
 
     print("\n=== Movement Transitions ===\n")
     for name, df in clustered.items():
@@ -75,8 +75,27 @@ def main(run_clustering: bool = True):
         print(f"{name}: {len(transitions)} transitions detected")
         print(transitions.head(5).to_string(index=False))
 
-    print("\n=== Generating Maps ===\n")
+    print("\n=== Generating Maps ===\n") 
+    #find the correlated top 5 in clustered to generate maps
+    top5_dated = {}
     for name, df in clustered.items():
+        newdf = df.copy()
+        newdf["month"] = newdf["datetime"].dt.to_period("M")
+
+        """
+        Function applied across the dataframe using this function
+        to get a dataframe with only the top clusters
+        """
+        def get_top5(group):
+            month = str(group.name)
+            return group[group["cluster"].isin(top5_clusters[name][month])]
+        
+        newdf = newdf.groupby("month", group_keys=False).apply(get_top5)
+
+        top5_dated[name] = newdf
+
+    #Generate the top 5 location maps for each person    
+    for name, df in top5_dated.items():
         print(f"Generating maps for {name}...")
         make_maps_for_user(name, df)
 

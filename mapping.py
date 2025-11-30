@@ -26,7 +26,7 @@ def make_maps_for_user(
         print(f"[mapping] No non-noise points for {user_name}, skipping maps.")
         return
 
-    # Downsample overall
+    # Downscale overall
     if len(df_non_noise) > max_points_overall:
         df_non_noise = df_non_noise.sample(max_points_overall, random_state=0)
 

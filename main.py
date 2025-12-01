@@ -1,6 +1,7 @@
 # main.py
 import os
 import pandas as pd
+from IPython.display import display
 from data_load import load_all_csvs, clean_gps
 from clustering import cluster_locations_per_month, compute_time_spent
 from analysis import top_locations_monthly, movement_transitions, weekday_weekend_stats
@@ -9,7 +10,7 @@ from mapping import make_maps_for_user
 CLUSTERED_DIR = "clustered_outputs"
 
 
-def main(run_clustering: bool = True):
+def main(run_clustering: bool = False, run_mapping: bool = False):
     print("\n=== Loading CSV Files ===\n")
     datasets = load_all_csvs()  # prints info while loading
 
@@ -109,34 +110,35 @@ def main(run_clustering: bool = True):
         print(transitions.head(5).to_string(index=False))
 
 
-    print("\n=== Generating Maps ===\n")
-    # find the correlated top 5 in clustered to generate maps
-    top5_dated = {}
+    if run_mapping:
+        print("\n=== Generating Maps ===\n")
+        # find the correlated top 5 in clustered to generate maps
+        top5_dated = {}
 
-    for name, df in clustered.items():
-        newdf = df.copy()
-        newdf["month"] = newdf["datetime"].dt.to_period("M")
+        for name, df in clustered.items():
+            newdf = df.copy()
+            newdf["month"] = newdf["datetime"].dt.to_period("M")
 
-        # remove -1 clusters completely
-        newdf = newdf[newdf["cluster"] != -1]
+            # remove -1 clusters completely
+            newdf = newdf[newdf["cluster"] != -1]
 
-        # only keep months that have top 5 clusters
-        valid_months = [pd.Period(m) for m in top5_clusters[name].keys()]
-        newdf = newdf[newdf["month"].isin(valid_months)]
+            # only keep months that have top 5 clusters
+            valid_months = [pd.Period(m) for m in top5_clusters[name].keys()]
+            newdf = newdf[newdf["month"].isin(valid_months)]
 
-        def get_top5(group):
-            month_str = str(group.name)
-            top_clusters = top5_clusters[name].get(month_str, [])
-            return group[group["cluster"].isin(top_clusters)]
+            def get_top5(group):
+                month_str = str(group.name)
+                top_clusters = top5_clusters[name].get(month_str, [])
+                return group[group["cluster"].isin(top_clusters)]
 
-        newdf = newdf.groupby("month", group_keys=False).apply(get_top5)
+            newdf = newdf.groupby("month", group_keys=False).apply(get_top5)
 
-        top5_dated[name] = newdf
+            top5_dated[name] = newdf
 
-    # Generate the top 5 location maps for each person
-    for name, df in top5_dated.items():
-        print(f"Generating maps for {name}...")
-        make_maps_for_user(name, df)
+        # Generate the top 5 location maps for each person
+        for name, df in top5_dated.items():
+            print(f"Generating maps for {name}...")
+            make_maps_for_user(name, df)
 
     print("\n=== Summary for Presentation ===\n")
     for name, df in clustered.items():
@@ -155,6 +157,20 @@ def main(run_clustering: bool = True):
             f"Top overall clusters -> {top_overall}"
         )
 
+    #Get hours spent in top5 clusters for week and weekend
+    for name, df in clustered.items():
+        week, weekend = weekday_weekend_stats(df)
+
+        # Exclude noise cluster -1
+        week = week[week['cluster'] != -1].head(5)
+        weekend = weekend[weekend['cluster'] != -1].head(5)
+
+        print(f"\n{name}:")
+        if not week.empty and not weekend.empty:
+            print("  Weekdays (hours spent in top clusters):")
+            print(week[['cluster', 'hours']].to_string(index=False))
+            print("  Weekends (hours spent in top clusters):")
+            print(weekend[['cluster', 'hours']].to_string(index=False))
     
 if __name__ == "__main__":
     # first run: set to True to compute + save clusters

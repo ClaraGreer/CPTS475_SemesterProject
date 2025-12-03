@@ -63,7 +63,7 @@ def weekday_weekend_stats(df):
     df["weekday"] = df["datetime"].dt.dayofweek
     df["is_weekend"] = df["weekday"].isin([5, 6])
 
-    week = compute_time_spent(df[df["is_weekend"] == False])
-    weekend = compute_time_spent(df[df["is_weekend"] == True])
+    week = compute_time_spent(df.loc[df["is_weekend"] == False])
+    weekend = compute_time_spent(df.loc[df["is_weekend"] == True])
 
     return week, weekend

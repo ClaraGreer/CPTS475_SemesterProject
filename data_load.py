@@ -3,7 +3,7 @@ import pandas as pd
 import glob
 import os
 
-DATA_PATH = r"C:\Users\clara\Washington State University (email.wsu.edu)\Oje, Funso - locations"
+DATA_PATH = r"C:\Users\monke\Washington State University (email.wsu.edu)\Oje, Funso - locations"
 
 def load_all_csvs(path=DATA_PATH):
     csv_files = glob.glob(os.path.join(path, "*.csv"))

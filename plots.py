@@ -95,7 +95,7 @@ def plot_user_combined(report_file: str, save_dir: str = PLOT_DIR):
     )
 
     # --- Big overarching title ---
-    fig.suptitle(f"User: {username}", fontsize=20, fontweight='bold')
+    fig.suptitle(f"Person: {username}", fontsize=20, fontweight='bold')
 
     # --- Row 1: Monthly line plot with cluster IDs ---
     ax = axs[0]

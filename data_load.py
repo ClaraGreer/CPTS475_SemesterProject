@@ -17,7 +17,7 @@ def load_all_csvs(path=DATA_PATH):
         print(f"Loaded {name}:")
         print(f"  Rows: {df.shape[0]}, Columns: {df.shape[1]}")
         print(f"  Columns: {list(df.columns)}")
-        print(f"  Date range: {df['datetime'].min()} → {df['datetime'].max()}")
+        print(f"  Date range: {df['datetime'].min()} -> {df['datetime'].max()}")
         print("-" * 40)
     return dfs
 

@@ -5,6 +5,7 @@ from data_load import load_all_csvs, clean_gps
 from clustering import cluster_locations_per_month, compute_time_spent
 from analysis import top_locations_monthly, movement_transitions, weekday_weekend_stats
 from mapping import make_maps_for_user
+from plots import plot_all_users
 
 CLUSTERED_DIR = "clustered_outputs"
 REPORT_DIR = "reports"
@@ -15,7 +16,7 @@ SPECIFIC_CLUSTER_MODE = "overall_top"
 MANUAL_CLUSTERS = [33, 17, 36]  # only used if SPECIFIC_CLUSTER_MODE == "manual"
 
 
-# ------------ NEW: WRITE REPORT FILES ------------
+# ------------ WRITE REPORT FILES ------------
 def save_user_report(username, top5_monthly, week_stats, weekend_stats, transitions, summary_info):
     os.makedirs(REPORT_DIR, exist_ok=True)
     path = os.path.join(REPORT_DIR, f"{username}_report.txt")
@@ -24,7 +25,7 @@ def save_user_report(username, top5_monthly, week_stats, weekend_stats, transiti
 
         f.write(f"==== Report for {username} ====\n\n")
 
-        # Summary section
+        # === Summary ===
         f.write("=== Summary ===\n")
         f.write(f"Total points: {summary_info['total_points']}\n")
         f.write(f"Non-noise points: {summary_info['non_noise']}\n")
@@ -32,38 +33,42 @@ def save_user_report(username, top5_monthly, week_stats, weekend_stats, transiti
         f.write(f"Detected clusters: {summary_info['n_clusters']}\n")
         f.write(f"Top overall clusters: {summary_info['top_overall']}\n\n")
 
-        # Monthly top 5 locations
+        # === Top 5 Locations Per Month (condensed) ===
         f.write("=== Top 5 Locations Per Month ===\n")
+        # Optionally, you can pick a few representative months instead of all
         for month, df in top5_monthly.items():
-            f.write(f"\nMonth: {month}\n")
-            f.write(df[['cluster', 'hours']].head(5).to_string(index=False))
-            f.write("\n")
+            top_str = ", ".join([f"{row['cluster']}({row['hours']:.1f}h)" 
+                                 for _, row in df.head(5).iterrows()])
+            f.write(f"{month}: {top_str}\n")
 
-        # Weekday / Weekend
-        f.write("\n=== Weekday vs Weekend Time Spent ===\n\n")
-
-        f.write("Weekdays:\n")
+        # === Weekday vs Weekend ===
+        f.write("\n=== Weekday vs Weekend Time Spent ===\n")
         if not week_stats.empty:
-            f.write(week_stats[['cluster', 'hours']].to_string(index=False) + "\n")
+            week_str = ", ".join([f"{row['cluster']}({row['hours']:.1f}h)" 
+                                  for _, row in week_stats.iterrows()])
+            f.write(f"Weekdays: {week_str}\n")
         else:
-            f.write("No weekday clusters.\n\n")
+            f.write("Weekdays: No data\n")
 
-        f.write("\nWeekends:\n")
         if not weekend_stats.empty:
-            f.write(weekend_stats[['cluster', 'hours']].to_string(index=False) + "\n")
+            weekend_str = ", ".join([f"{row['cluster']}({row['hours']:.1f}h)" 
+                                     for _, row in weekend_stats.iterrows()])
+            f.write(f"Weekends: {weekend_str}\n")
         else:
-            f.write("No weekend clusters.\n\n")
+            f.write("Weekends: No data\n")
 
-        # Transitions
+        # === Movement Transitions ===
         f.write("\n=== Movement Transitions (first 10 rows) ===\n")
         if not transitions.empty:
-            f.write(transitions.head(10).to_string(index=False) + "\n")
+            f.write(transitions.head(10).to_string(index=False))
+            f.write("\n")
         else:
             f.write("No transitions detected.\n")
 
         f.write("\n==== END OF REPORT ====\n")
 
-    print(f" Saved report > {path}")
+    print(f"Saved condensed report > {path}")
+
 
 
 # ------------ MAIN PROGRAM ------------
@@ -155,7 +160,10 @@ def main(run_clustering: bool = True):
             summary_info=summary_info
         )
 
-    # ---- Map generation (unchanged) ----
+    # ---- Plot generation ---
+    plot_all_users()   
+
+    # ---- Map generation ----
     print("\n=== Generating Maps ===\n")
 
     top5_clusters = {}

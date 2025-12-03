@@ -63,7 +63,7 @@ def save_user_report(username, top5_monthly, week_stats, weekend_stats, transiti
 
         f.write("\n==== END OF REPORT ====\n")
 
-    print(f"[✓] Saved report → {path}")
+    print(f" Saved report > {path}")
 
 
 # ------------ MAIN PROGRAM ------------

@@ -5,7 +5,7 @@ from data_load import load_all_csvs, clean_gps
 from clustering import cluster_locations_per_month, compute_time_spent
 from analysis import top_locations_monthly, movement_transitions, weekday_weekend_stats
 from mapping import make_maps_for_user
-from plots import plot_all_users
+from plots import plot_user_report
 
 CLUSTERED_DIR = "clustered_outputs"
 REPORT_DIR = "reports"
@@ -161,7 +161,7 @@ def main(run_clustering: bool = True):
         )
 
     # ---- Plot generation ---
-    plot_all_users()   
+    plot_user_report()   
 
     # ---- Map generation ----
     print("\n=== Generating Maps ===\n")

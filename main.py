@@ -1,7 +1,6 @@
 # main.py
 import os
 import pandas as pd
-from IPython.display import display
 from data_load import load_all_csvs, clean_gps
 from clustering import cluster_locations_per_month, compute_time_spent
 from analysis import top_locations_monthly, movement_transitions, weekday_weekend_stats
@@ -16,7 +15,7 @@ SPECIFIC_CLUSTER_MODE = "overall_top"
 MANUAL_CLUSTERS = [33, 17, 36]  # only used if SPECIFIC_CLUSTER_MODE == "manual"
 
 
-# ------------ WRITE REPORT FILES ------------
+# ------------ NEW: WRITE REPORT FILES ------------
 def save_user_report(username, top5_monthly, week_stats, weekend_stats, transitions, summary_info):
     os.makedirs(REPORT_DIR, exist_ok=True)
     path = os.path.join(REPORT_DIR, f"{username}_report.txt")
@@ -156,7 +155,7 @@ def main(run_clustering: bool = True):
             summary_info=summary_info
         )
 
-    # ---- Map generation ----
+    # ---- Map generation (unchanged) ----
     print("\n=== Generating Maps ===\n")
 
     top5_clusters = {}
@@ -174,10 +173,10 @@ def main(run_clustering: bool = True):
         valid_months = [pd.Period(m) for m in top5_clusters[name].keys()]
         newdf = newdf[newdf["month"].isin(valid_months)]
 
-            def get_top5(group):
-                month_str = str(group.name)
-                top_clusters = top5_clusters[name].get(month_str, [])
-                return group[group["cluster"].isin(top_clusters)]
+        def get_top5(group):
+            month_str = str(group.name)
+            top_clusters = top5_clusters[name].get(month_str, [])
+            return group[group["cluster"].isin(top_clusters)]
 
         newdf = newdf.groupby("month", group_keys=False).apply(get_top5)
         top5_dated[name] = newdf

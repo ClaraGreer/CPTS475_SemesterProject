@@ -1,6 +1,7 @@
 # clustering.py
 import pandas as pd
 import numpy as np
+import kDBCV
 from sklearn.cluster import DBSCAN
 import hdbscan
 import warnings
@@ -21,14 +22,17 @@ def cluster_locations_per_month(df, eps_meters=50, min_samples=5, n_jobs=1):
     df['month'] = df['datetime'].dt.to_period('M')
 
     result_dfs = []
+    evaluation_scores = []
     count = 0
+    evaluated = 0
 
     for month, group in df.groupby('month'):
         if group.empty:
             continue
 
         # Convert coordinates to radians for Haversine metric
-        coords = np.radians(group[['latitude', 'longitude']].to_numpy())
+        coords = np.radians(group[['latitude', 'longitude']].to_numpy(dtype=np.float32))
+
 
         # HDBSCAN clustering
         db = hdbscan.HDBSCAN(
@@ -39,6 +43,26 @@ def cluster_locations_per_month(df, eps_meters=50, min_samples=5, n_jobs=1):
         )
         labels = db.fit_predict(coords)
 
+        #Evaluate the clustering method using 20% of the data as a sample
+        sample_size = int(0.2 * len(coords))
+        indices = np.random.choice(len(coords), size=sample_size, replace=False)
+        sampled_coords = coords[indices].astype(np.float32)
+        sampled_labels = labels[indices]
+
+        #handles if HDSCAN was unable to create clusters or kDBCV is unable to produce an analysis
+        try:
+            score = kDBCV.DBCV_score(sampled_coords, sampled_labels, mem_cutoff=7)
+        except ValueError:
+            score = (-1,0)
+
+        #only stores and tracks succesfull evaluation
+        if score[0] != -1:
+            evaluation_scores.append(score[0])
+            evaluated +=1
+        else:
+            print("Score not appended (-1)")
+
+
         count += 1
 
         print(f"finished {count}")
@@ -46,7 +70,11 @@ def cluster_locations_per_month(df, eps_meters=50, min_samples=5, n_jobs=1):
         group['cluster'] = labels
         result_dfs.append(group)
 
-    return pd.concat(result_dfs, ignore_index=True)
+    #find average DBCV score
+    print(evaluation_scores)
+    avg_DBCV_score = sum(evaluation_scores) / evaluated
+
+    return pd.concat(result_dfs, ignore_index=True), avg_DBCV_score
 
 
 def compute_time_spent(df):

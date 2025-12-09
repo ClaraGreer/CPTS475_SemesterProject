@@ -8,9 +8,16 @@ from analysis import top_locations_monthly, movement_transitions, weekday_weeken
 from mapping import make_maps_for_user
 
 CLUSTERED_DIR = "clustered_outputs"
+EVALUATION_DIR = "cluster_evaluation"
 
+def main(run_clustering: bool = True, run_mapping: bool = False):
 
-def main(run_clustering: bool = False, run_mapping: bool = False):
+    #Reset metrics file
+    path = os.path.join(EVALUATION_DIR, "evaluation_metrics.txt")
+    if path:
+        f = open(path, 'w')
+        f.close()
+
     print("\n=== Loading CSV Files ===\n")
     datasets = load_all_csvs()  # prints info while loading
 
@@ -30,7 +37,7 @@ def main(run_clustering: bool = False, run_mapping: bool = False):
     if run_clustering:
         print("\n=== Clustering Locations Per Month ===\n")
         for name, df in cleaned.items():
-            cluster_df = cluster_locations_per_month(
+            cluster_df, avg_DBCV_score = cluster_locations_per_month(
                 df, eps_meters=50, min_samples=5, n_jobs=-1
             )
             clustered[name] = cluster_df
@@ -38,6 +45,17 @@ def main(run_clustering: bool = False, run_mapping: bool = False):
             # save to CSV so we can reuse without reclustering
             out_path = os.path.join(CLUSTERED_DIR, f"{name}_clustered.csv")
             cluster_df.to_csv(out_path, index=False)
+
+            #Save the evalutation metrics
+            out_path2 = os.path.join(EVALUATION_DIR, "evaluation_metrics.txt")
+            if not os.path.exists(out_path):
+                with open(out_path2, 'w') as f:
+                    f.write(f"{name} had an average DBCV score of: {avg_DBCV_score}\n")
+            else:
+                with open(out_path2, 'a') as f:
+                    f.write(f"{name} had an average DBCV score of: {avg_DBCV_score}\n")
+            f.close()
+                
 
             # >>> NEW: detailed clustering stats <<<
             total_points = len(cluster_df)
@@ -175,4 +193,4 @@ def main(run_clustering: bool = False, run_mapping: bool = False):
 if __name__ == "__main__":
     # first run: set to True to compute + save clusters
     # later runs (for mapping/analysis only): change to False
-    main(run_clustering=False)
+    main(run_clustering=True)

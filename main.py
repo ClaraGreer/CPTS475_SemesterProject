@@ -1,14 +1,20 @@
 # main.py
 import os
 import pandas as pd
-from IPython.display import display
 from data_load import load_all_csvs, clean_gps
 from clustering import cluster_locations_per_month, compute_time_spent
 from analysis import top_locations_monthly, movement_transitions, weekday_weekend_stats
 from mapping import make_maps_for_user
+from plots import plot_user_report
 
 CLUSTERED_DIR = "clustered_outputs"
 EVALUATION_DIR = "cluster_evaluation"
+REPORT_DIR = "reports"
+
+# === MAP GENERATION SETTINGS ===
+GENERATE_SPECIFIC_CLUSTERS = True
+SPECIFIC_CLUSTER_MODE = "overall_top"
+MANUAL_CLUSTERS = [33, 17, 36]  # only used if SPECIFIC_CLUSTER_MODE == "manual"
 
 def main(run_clustering: bool = True, run_mapping: bool = False):
 
@@ -18,15 +24,70 @@ def main(run_clustering: bool = True, run_mapping: bool = False):
         f = open(path, 'w')
         f.close()
 
-    print("\n=== Loading CSV Files ===\n")
-    datasets = load_all_csvs()  # prints info while loading
+# ------------ WRITE REPORT FILES ------------
+def save_user_report(username, top5_monthly, week_stats, weekend_stats, transitions, summary_info):
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    path = os.path.join(REPORT_DIR, f"{username}_report.txt")
 
+    with open(path, "w", encoding="utf-8") as f:
+
+        f.write(f"==== Report for {username} ====\n\n")
+
+        # === Summary ===
+        f.write("=== Summary ===\n")
+        f.write(f"Total points: {summary_info['total_points']}\n")
+        f.write(f"Non-noise points: {summary_info['non_noise']}\n")
+        f.write(f"Noise points: {summary_info['noise']}\n")
+        f.write(f"Detected clusters: {summary_info['n_clusters']}\n")
+        f.write(f"Top overall clusters: {summary_info['top_overall']}\n\n")
+
+        # === Top 5 Locations Per Month (condensed) ===
+        f.write("=== Top 5 Locations Per Month ===\n")
+        # Optionally, you can pick a few representative months instead of all
+        for month, df in top5_monthly.items():
+            top_str = ", ".join([f"{row['cluster']}({row['hours']:.1f}h)" 
+                                 for _, row in df.head(5).iterrows()])
+            f.write(f"{month}: {top_str}\n")
+
+        # === Weekday vs Weekend ===
+        f.write("\n=== Weekday vs Weekend Time Spent ===\n")
+        if not week_stats.empty:
+            week_str = ", ".join([f"{row['cluster']}({row['hours']:.1f}h)" 
+                                  for _, row in week_stats.iterrows()])
+            f.write(f"Weekdays: {week_str}\n")
+        else:
+            f.write("Weekdays: No data\n")
+
+        if not weekend_stats.empty:
+            weekend_str = ", ".join([f"{row['cluster']}({row['hours']:.1f}h)" 
+                                     for _, row in weekend_stats.iterrows()])
+            f.write(f"Weekends: {weekend_str}\n")
+        else:
+            f.write("Weekends: No data\n")
+
+        # === Movement Transitions ===
+        f.write("\n=== Movement Transitions (first 10 rows) ===\n")
+        if not transitions.empty:
+            f.write(transitions.head(10).to_string(index=False))
+            f.write("\n")
+        else:
+            f.write("No transitions detected.\n")
+
+        f.write("\n==== END OF REPORT ====\n")
+
+    print(f"Saved condensed report > {path}")
+
+
+
+# ------------ MAIN PROGRAM ------------
+def main(run_clustering: bool = True):
+    print("\n=== Loading CSV Files ===\n")
+    datasets = load_all_csvs()
 
     print("\n=== Cleaning Data ===\n")
     cleaned = {}
     for name, df in datasets.items():
         clean_df = clean_gps(df)
-        # make sure datetime is parsed (backup, though clean_gps should already do it)
         clean_df["datetime"] = pd.to_datetime(clean_df["datetime"])
         cleaned[name] = clean_df
         print(f"{name}: {clean_df.shape[0]} rows remain after cleaning")
@@ -34,6 +95,7 @@ def main(run_clustering: bool = True, run_mapping: bool = False):
     os.makedirs(CLUSTERED_DIR, exist_ok=True)
     clustered = {}
 
+    # Run clustering
     if run_clustering:
         print("\n=== Clustering Locations Per Month ===\n")
         for name, df in cleaned.items():
@@ -42,7 +104,7 @@ def main(run_clustering: bool = True, run_mapping: bool = False):
             )
             clustered[name] = cluster_df
 
-            # save to CSV so we can reuse without reclustering
+            # save clustered csv
             out_path = os.path.join(CLUSTERED_DIR, f"{name}_clustered.csv")
             cluster_df.to_csv(out_path, index=False)
 
@@ -60,136 +122,119 @@ def main(run_clustering: bool = True, run_mapping: bool = False):
             # >>> NEW: detailed clustering stats <<<
             total_points = len(cluster_df)
             noise_points = (cluster_df["cluster"] == -1).sum()
-            non_noise_points = total_points - noise_points
-
-            unique_clusters = cluster_df["cluster"].unique()
-            n_clusters = len(unique_clusters) - (1 if -1 in unique_clusters else 0)
+            non_noise = total_points - noise_points
+            n_clusters = cluster_df["cluster"].nunique() - (1 if -1 in cluster_df["cluster"].unique() else 0)
 
             print(
-                f"{name}: {n_clusters} clusters detected "
-                f"(total points={total_points}, non-noise={non_noise_points}, noise={noise_points}) "
-                f"(saved to {out_path})"
+                f"{name}: {n_clusters} clusters, "
+                f"{non_noise}/{total_points} non-noise points (saved to {out_path})"
             )
     else:
         print("\n=== Loading PRE-COMPUTED Clustered Data ===\n")
         for name in cleaned.keys():
             path = os.path.join(CLUSTERED_DIR, f"{name}_clustered.csv")
             if not os.path.exists(path):
-                raise FileNotFoundError(
-                    f"Expected clustered file not found for {name}: {path}. "
-                    "Run with run_clustering=True at least once first."
-                )
+                raise FileNotFoundError(f"Clustered file missing: {path}")
             df = pd.read_csv(path, parse_dates=["datetime"])
             clustered[name] = df
             print(f"{name}: loaded {df.shape[0]} rows from {path}")
 
-
-    print("\n=== Top 5 Locations Per Month ===\n")
-    top5_clusters = {}
+    # -------------------------------------------------
+    # WRITE REPORTS INSTEAD OF PRINTING EVERYTHING
+    # -------------------------------------------------
+    print("\n=== Generating Reports ===\n")
 
     for name, df in clustered.items():
-        print(f"\n{name}:")
-        top5 = top_locations_monthly(df, n=5)
-        top5_clusters[name] = {}
-        for month, dwell_df in top5.items():
-            print(f"  Month: {month}")
-            print(dwell_df[['cluster', 'hours']].head(5).to_string(index=False))
 
-            # Store clusters present for mapping
-            top5_clusters[name][month] = dwell_df["cluster"].tolist()
-         
+        # Top 5 monthly
+        top5_monthly = top_locations_monthly(df, n=5)
 
-    print("\n=== Weekday vs Weekend Time Spent (Top 5 Clusters) ===\n")
-    for name, df in clustered.items():
+        # Weekday vs Weekend
         week, weekend = weekday_weekend_stats(df)
-
-        # Exclude noise cluster -1
         week = week[week['cluster'] != -1].head(5)
         weekend = weekend[weekend['cluster'] != -1].head(5)
 
-        print(f"\n{name}:")
-        print("  Weekdays (hours spent in top clusters):")
-        if not week.empty:
-            print(week[['cluster', 'hours']].to_string(index=False))
-        else:
-            print("    No weekday clusters found.")
-
-        print("  Weekends (hours spent in top clusters):")
-        if not weekend.empty:
-            print(weekend[['cluster', 'hours']].to_string(index=False))
-        else:
-            print("    No weekend clusters found.")
-
-
-    print("\n=== Movement Transitions ===\n")
-    for name, df in clustered.items():
+        # Transitions
         transitions = movement_transitions(df)
-        print(f"{name}: {len(transitions)} transitions detected")
-        print(transitions.head(5).to_string(index=False))
 
-
-    if run_mapping:
-        print("\n=== Generating Maps ===\n")
-        # find the correlated top 5 in clustered to generate maps
-        top5_dated = {}
-
-        for name, df in clustered.items():
-            newdf = df.copy()
-            newdf["month"] = newdf["datetime"].dt.to_period("M")
-
-            # remove -1 clusters completely
-            newdf = newdf[newdf["cluster"] != -1]
-
-            # only keep months that have top 5 clusters
-            valid_months = [pd.Period(m) for m in top5_clusters[name].keys()]
-            newdf = newdf[newdf["month"].isin(valid_months)]
-
-            def get_top5(group):
-                month_str = str(group.name)
-                top_clusters = top5_clusters[name].get(month_str, [])
-                return group[group["cluster"].isin(top_clusters)]
-
-            newdf = newdf.groupby("month", group_keys=False).apply(get_top5)
-
-            top5_dated[name] = newdf
-
-        # Generate the top 5 location maps for each person
-        for name, df in top5_dated.items():
-            print(f"Generating maps for {name}...")
-            make_maps_for_user(name, df)
-
-    print("\n=== Summary for Presentation ===\n")
-    for name, df in clustered.items():
-        total_points = len(df)
-        noise_points = (df["cluster"] == -1).sum()
-        non_noise_points = total_points - noise_points
-        n_clusters = df["cluster"].nunique() - (1 if -1 in df["cluster"].unique() else 0)
-
-        # Get overall top 5 clusters across all months
+        # Summary info
         cluster_hours = compute_time_spent(df)
         cluster_hours = cluster_hours[cluster_hours['cluster'] != -1]
         top_overall = cluster_hours.head(5)['cluster'].tolist()
 
-        print(
-            f"{name}: {n_clusters} clusters, {non_noise_points}/{total_points} points non-noise, "
-            f"Top overall clusters -> {top_overall}"
+        summary_info = {
+            "total_points": len(df),
+            "non_noise": (df["cluster"] != -1).sum(),
+            "noise": (df["cluster"] == -1).sum(),
+            "n_clusters": df["cluster"].nunique() - (1 if -1 in df["cluster"].unique() else 0),
+            "top_overall": top_overall
+        }
+
+        # Save report file
+        save_user_report(
+            username=name,
+            top5_monthly=top5_monthly,
+            week_stats=week,
+            weekend_stats=weekend,
+            transitions=transitions,
+            summary_info=summary_info
         )
 
-    #Get hours spent in top5 clusters for week and weekend
+    # ---- Plot generation ---
+    plot_user_report()   
+
+    # ---- Map generation ----
+    print("\n=== Generating Maps ===\n")
+
+    top5_clusters = {}
     for name, df in clustered.items():
-        week, weekend = weekday_weekend_stats(df)
+        t5 = top_locations_monthly(df, n=5)
+        top5_clusters[name] = {month: v["cluster"].tolist() for month, v in t5.items()}
 
-        # Exclude noise cluster -1
-        week = week[week['cluster'] != -1].head(5)
-        weekend = weekend[weekend['cluster'] != -1].head(5)
+    top5_dated = {}
+    top_overall_clusters = {}
 
-        print(f"\n{name}:")
-        if not week.empty and not weekend.empty:
-            print("  Weekdays (hours spent in top clusters):")
-            print(week[['cluster', 'hours']].to_string(index=False))
-            print("  Weekends (hours spent in top clusters):")
-            print(weekend[['cluster', 'hours']].to_string(index=False))
-    
+    for name, df in clustered.items():
+        newdf = df.copy()
+        newdf["month"] = newdf["datetime"].dt.to_period("M")
+        newdf = newdf[newdf["cluster"] != -1]
+        valid_months = [pd.Period(m) for m in top5_clusters[name].keys()]
+        newdf = newdf[newdf["month"].isin(valid_months)]
+
+        def get_top5(group):
+            month_str = str(group.name)
+            top_clusters = top5_clusters[name].get(month_str, [])
+            return group[group["cluster"].isin(top_clusters)]
+
+        newdf = newdf.groupby("month", group_keys=False).apply(get_top5)
+        top5_dated[name] = newdf
+
+        all_top = []
+        for month_clusters in top5_clusters[name].values():
+            all_top.extend(month_clusters)
+        all_unique = list(dict.fromkeys(all_top))
+        top_overall_clusters[name] = all_unique[:5]
+
+    def make_maps_for_specific_clusters(user: str, df: pd.DataFrame, clusters: list[int]):
+        df_filtered = df[df["cluster"].isin(clusters)]
+        if df_filtered.empty:
+            print(f"No points found for clusters {clusters} in {user}.")
+            return
+        make_maps_for_user(user, df_filtered)
+        print(f"Map generated for {user}, clusters {clusters}.")
+
+    # Map loop
+    for name, df in top5_dated.items():
+        if GENERATE_SPECIFIC_CLUSTERS:
+            if SPECIFIC_CLUSTER_MODE == "overall_top":
+                clusters_to_map = top_overall_clusters[name]
+            else:
+                clusters_to_map = MANUAL_CLUSTERS
+            make_maps_for_specific_clusters(name, df, clusters_to_map)
+        else:
+            make_maps_for_user(name, df)
+
+
 if __name__ == "__main__":
     # first run: set to True to compute + save clusters
     # later runs (for mapping/analysis only): change to False
